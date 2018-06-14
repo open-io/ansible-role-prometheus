@@ -11,4 +11,5 @@ prometheus_blackbox_services:
   - beanstalkd
   - redis
   - rdir
+  - conscience
 ...
