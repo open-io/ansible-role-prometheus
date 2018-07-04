@@ -1,5 +1,11 @@
 ---
 # vars file for ansible-role-prometheus
+prometheus_valid_distros:
+  - distro: Ubuntu
+    version: 16
+  - distro: CentOS
+    version: 7
+
 prometheus_blackbox_services:
   - meta0
   - meta1
