@@ -12,3 +12,23 @@
   [[ "${status}" -eq "0" ]]
   [[ "${output}" =~ 'go_goroutines' ]]
 }
+
+@test 'Prometheus defaults file exists and is correct' {
+  run bash -c "docker exec -ti ${SUT_ID} cat /etc/default/prometheus"
+  echo "output: "$output
+  echo "status: "$status
+  [[ "${status}" -eq "0" ]]
+  [[ "${output}" =~ 'storage.tsdb.path=/var/lib/prometheus/data' ]]
+}
+
+@test 'Prometheus config file exists' {
+  run bash -c "docker exec -ti ${SUT_ID} cat /etc/prometheus/prometheus.yml"
+  echo "output: "$output
+  [[ "${status}" -eq "0" ]]
+}
+
+@test 'Netdata rules are added' {
+  run bash -c "docker exec -ti ${SUT_ID} cat /etc/prometheus/targets/netdata.yml"
+  echo "output: "$output
+  [[ "${status}" -eq "0" ]]
+}
