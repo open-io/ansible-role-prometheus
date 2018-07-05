@@ -23,11 +23,13 @@ IFS=$'\t\n'   # Split on newlines and tabs (but not on spaces)
 
 readonly container_id="$(mktemp)"
 readonly role_dir='/etc/ansible/roles/ansible-role-prometheus'
+
 if [ "$#" -ne 1 ]; then
     readonly test_playbook="${role_dir}/docker-tests/test.yml"
 else
     readonly test_playbook="${role_dir}/docker-tests/$1.yml"
 fi
+inventory="${role_dir}/docker-tests/inventory.ini"
 readonly requirements="${role_dir}/docker-tests/requirements.yml"
 
 readonly docker_image="cdelgehier/docker_images_ansible"
@@ -68,7 +70,7 @@ configure_environment() {
       run_opts+=('--volume=/sys/fs/cgroup:/sys/fs/cgroup:ro')
       ;;
     'centos_7'|'fedora_25')
-      init=/usr/lib/systemd/systemd
+      # init=/usr/lib/systemd/systemd
       run_opts+=('--volume=/sys/fs/cgroup:/sys/fs/cgroup:ro')
       ;;
     'ubuntu_14.04')
@@ -100,15 +102,21 @@ build_container() {
 }
 
 start_container() {
-  log "Starting container"
-  set -x
-  docker run --detach \
-    "${run_opts[@]}" \
-    --volume="${PWD}:${role_dir}:ro" \
-    "${image_tag}" \
-    "${init}" \
-    > "${container_id}"
-  set +x
+  cid=$(docker ps -qf "ancestor=$image_tag")
+  if [ -z "$cid" ]; then
+      log "Starting container"
+      set -x
+      docker run --detach \
+        "${run_opts[@]}" \
+        --volume="${PWD}:${role_dir}:ro" \
+        "${image_tag}" \
+        "${init}" \
+        > "${container_id}"
+      set +x
+  else
+      log "Reusing existing container"
+      echo $cid > "${container_id}"
+  fi
 }
 
 get_container_id() {
@@ -150,22 +158,34 @@ run_syntax_check() {
 
 run_test_playbook() {
   log 'Running playbook'
-  exec_container ansible-playbook "${test_playbook}" --diff
+  if exec_container cat "$inventory"; then
+      exec_container ansible-playbook -i "${inventory}" "${test_playbook}" --diff
+  else
+      exec_container ansible-playbook "${test_playbook}" --diff
+  fi
   log 'Run finished'
 }
 
 run_galaxy_install() {
   log "Running ansible-galaxy install"
-  exec_container ansible-galaxy install -r "${requirements}"
-  log "Requirements installed"
+  if [ -f "$requirements" ]; then
+      exec_container ansible-galaxy install -r "${requirements}"
+      log "Requirements installed"
+  else
+      log "Requirements skipped"
+  fi
+
 }
 
 run_idempotence_test() {
   log 'Running idempotence test'
   local output
   output="$(mktemp)"
-
-  exec_container ansible-playbook "${test_playbook}" --diff 2>&1 | tee "${output}"
+  if exec_container cat "$inventory"; then
+      exec_container ansible-playbook -i "${inventory}" "${test_playbook}" --diff 2>&1 | tee "${output}"
+  else
+      exec_container ansible-playbook "${test_playbook}" --diff 2>&1 | tee "${output}"
+  fi
 
   if grep -q "changed=${NORMALCHANGES:=0}.*failed=0" "${output}"; then
     result='pass'
@@ -198,5 +218,7 @@ log() {
 }
 
 #}}}
+
+# trap cleanup EXIT
 
 main "${@}"
